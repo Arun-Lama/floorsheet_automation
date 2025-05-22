@@ -1,0 +1,27 @@
+name: Run Floorsheet Script
+
+on:
+  workflow_dispatch:  # Manual trigger
+  schedule:
+    - cron: "30 9 * * *"  # 3:15 PM Nepali time (UTC+5:45)
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install selenium
+
+    - name: Run floorsheet_github.py
+      run: python floorsheet_github.py
