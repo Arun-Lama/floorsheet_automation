@@ -9,36 +9,37 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException
 from webdriver_manager.chrome import ChromeDriverManager
+from read_write_google_sheet import write_new_google_sheet_to_folder
+import total_traded_shares
 
-# Setup Chrome in headless mode
+# Setup Chrome
+HEADLESS = True  # Change to False for debugging
+
 options = Options()
 options.add_argument("start-maximized")
-options.add_argument("--headless")  # Run in headless mode
-options.add_argument("--disable-gpu")  # Disable GPU acceleration
-options.add_argument("--no-sandbox")  # Bypass OS security model
-options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
-options.add_argument("window-size=1920,1080")  # Set the window size for consistency
-
-options.add_argument(
-    "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
-)
+if HEADLESS:
+    options.add_argument("--headless")
+options.add_argument("--disable-gpu")
+options.add_argument("--no-sandbox")
+options.add_argument("--disable-dev-shm-usage")
+options.add_argument("window-size=1920,1080")
+options.add_argument("--remote-debugging-port=9222")
+options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36")
 
 # Disable images
 prefs = {"profile.managed_default_content_settings.images": 2}
 options.add_experimental_option("prefs", prefs)
-time.sleep(2)
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-# driver = webdriver.Chrome(service=Service(ChromeDriverManager(driver_version="137.0.7151.40").install()), options=options)
 
-
+# driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+driver = webdriver.Chrome(service=Service(ChromeDriverManager(driver_version="137.0.7151.40").install()), options=options)
 # Track time
 start_time = time.time()
 
 # Visit target URL
 url = "https://nepalstock.com.np/floor-sheet"
 driver.get(url)
-time.sleep(5)
-driver.save_screenshot("headless_debug5.png")
+time.sleep(2)
+# driver.save_screenshot("debug_initial.png")
 
 # Set limit to 500
 WebDriverWait(driver, 15).until(
@@ -49,12 +50,8 @@ WebDriverWait(driver, 15).until(
 WebDriverWait(driver, 10).until(
     EC.element_to_be_clickable((By.XPATH, "/html/body/app-root/div/main/div/app-floor-sheet/div/div[3]/div/div[6]/button[1]"))
 ).click()
+
 time.sleep(0.5)
-# Wait for table rows to load
-WebDriverWait(driver, 15).until(
-    EC.presence_of_element_located((By.CSS_SELECTOR, ".table-responsive tbody tr"))
-)
-# driver.save_screenshot("headless_debug5.png")
 
 # Start scraping
 all_data = []
@@ -66,19 +63,33 @@ while True:
 
     try:
         WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, ".table-responsive tbody tr"))
+            EC.visibility_of_element_located((By.CSS_SELECTOR, ".table-responsive tbody tr"))
         )
 
-        soup = BeautifulSoup(driver.page_source, "html.parser")
-        rows = soup.select(".table-responsive tbody tr")
+        # Retry logic if rows are missing
+        MAX_RETRIES = 3
+        retry_count = 0
+        rows = []
 
-        # Capture current page's first contractNo
+        while retry_count < MAX_RETRIES:
+            soup = BeautifulSoup(driver.page_source, "html.parser")
+            rows = soup.select(".table-responsive tbody tr")
+            if rows:
+                break
+            print(f"No rows found. Retrying... ({retry_count + 1}/{MAX_RETRIES})")
+            time.sleep(2)
+            retry_count += 1
+
         if not rows:
-            print("No rows found, skipping.")
+            print("No rows found after retries. Saving HTML for debugging and exiting.")
+            with open("debug_empty_rows.html", "w", encoding="utf-8") as f:
+                f.write(driver.page_source)
+            driver.save_screenshot("debug_no_rows.png")
             break
-        first_row_text = rows[0].text.strip()
 
+        first_row_text = rows[0].text.strip()
         new_rows_added = 0
+
         for row in rows:
             cols = row.find_all("td")
             if len(cols) >= 8:
@@ -88,18 +99,18 @@ while True:
                 seen_contracts.add(contract_no)
 
                 data = {
-                    "contractNo": contract_no,
-                    "stockSymbol": cols[2].get_text(strip=True),
-                    "buyer": cols[3].get_text(strip=True),
-                    "seller": cols[4].get_text(strip=True),
-                    "quantity": int(cols[5].get_text(strip=True).replace(",", "")),
-                    "rate": float(cols[6].get_text(strip=True).replace(",", "")),
-                    "amount": float(cols[7].get_text(strip=True).replace(",", "")),
+                    "Contract No.": contract_no,
+                    "Stock Symbol": cols[2].get_text(strip=True),
+                    "Buyer": cols[3].get_text(strip=True),
+                    "Seller": cols[4].get_text(strip=True),
+                    "Quantity": int(cols[5].get_text(strip=True).replace(",", "")),
+                    "Rate (Rs)": float(cols[6].get_text(strip=True).replace(",", "")),
+                    "Amount (Rs)": float(cols[7].get_text(strip=True).replace(",", "")),
                 }
                 all_data.append(data)
                 new_rows_added += 1
 
-        print(f"Added {new_rows_added} new rows.")
+        # print(f"Added {new_rows_added} new rows.")
 
         # Check for Next button
         try:
@@ -111,11 +122,14 @@ while True:
                 print("Next button is disabled. Finished scraping.")
                 break
 
+            driver.execute_script("arguments[0].scrollIntoView(true);", next_btn)
+
             next_link = next_btn.find_element(By.TAG_NAME, "a")
             WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.TAG_NAME, "a")))
             next_link.click()
             time.sleep(1)
-            # Wait for the new page's first row to be different
+
+            # Wait for the new page to load (detect change in first row)
             WebDriverWait(driver, 20).until(
                 lambda d: BeautifulSoup(d.page_source, "html.parser").select(".table-responsive tbody tr")[0].text.strip() != first_row_text
             )
@@ -128,18 +142,27 @@ while True:
 
     except Exception as e:
         print("Error during scraping:", e)
+        driver.save_screenshot("debug_scraping_error.png")
         break
 
 # Close browser
 driver.quit()
-
-# Save data to DataFrame
-df = pd.DataFrame(all_data)
-print(f"Scraped {len(df)} unique rows.")
-
-# Save to CSV (optional)
-# df.to_csv("floorsheet_data.csv", index=False)
-
-# Total time taken
+# Time taken
 end_time = time.time()
 print(f"Total runtime: {round(end_time - start_time, 2)} seconds")
+df = pd.DataFrame(all_data)
+date = str(df['Contract No.'].iloc[-1])[:8]
+date_format = pd.to_datetime(date, format='%Y%m%d').strftime('%Y-%m-%d')
+df["Date"] = date_format
+df["Contract No."] = "'" + df["Contract No."].astype(str)
+print(f"Scraped {len(df)} unique rows.")
+
+total_traded_turnover= total_traded_shares.total_turnover()
+
+
+if total_traded_turnover != df["Amount (Rs)"].sum():
+    print("Wrong Data!")
+else: 
+    print('Correct Data Downloaded')
+    print(f'Correct total turnover = {total_traded_turnover}')
+    write_new_google_sheet_to_folder(df, f"{date_format} floorsheet", "1U3MOR0IMKuq30c-B9abSV-eeljjpUXPC")
