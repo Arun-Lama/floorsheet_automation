@@ -30,8 +30,8 @@ options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) Apple
 prefs = {"profile.managed_default_content_settings.images": 2}
 options.add_experimental_option("prefs", prefs)
 
-# driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-driver = webdriver.Chrome(service=Service(ChromeDriverManager(driver_version="137.0.7151.40").install()), options=options)
+driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+# driver = webdriver.Chrome(service=Service(ChromeDriverManager(driver_version="137.0.7151.40").install()), options=options)
 # Track time
 start_time = time.time()
 
@@ -39,7 +39,6 @@ start_time = time.time()
 url = "https://nepalstock.com.np/floor-sheet"
 driver.get(url)
 time.sleep(2)
-# driver.save_screenshot("debug_initial.png")
 
 # Set limit to 500
 WebDriverWait(driver, 15).until(
@@ -51,7 +50,7 @@ WebDriverWait(driver, 10).until(
     EC.element_to_be_clickable((By.XPATH, "/html/body/app-root/div/main/div/app-floor-sheet/div/div[3]/div/div[6]/button[1]"))
 ).click()
 
-time.sleep(0.5)
+time.sleep(2)
 
 # Start scraping
 all_data = []
@@ -62,7 +61,7 @@ while True:
     print(f"Scraping page {page_no}...")
 
     try:
-        WebDriverWait(driver, 20).until(
+        WebDriverWait(driver, 10).until(
             EC.visibility_of_element_located((By.CSS_SELECTOR, ".table-responsive tbody tr"))
         )
 
@@ -162,6 +161,7 @@ total_traded_turnover= total_traded_shares.total_turnover()
 
 if total_traded_turnover != df["Amount (Rs)"].sum():
     print("Wrong Data!")
+    print(total_traded_turnover,  df["Amount (Rs)"].sum())
 else: 
     print('Correct Data Downloaded')
     print(f'Correct total turnover = {total_traded_turnover}')
