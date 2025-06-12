@@ -4,7 +4,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 from googleapiclient.discovery import build
-import os
+
 
 def read_google_sheet(sheet_id):   
     spreadsheet_id = sheet_id
