@@ -109,7 +109,7 @@ while True:
                 all_data.append(data)
                 new_rows_added += 1
 
-        # print(f"Added {new_rows_added} new rows.")
+        print(f"Added {new_rows_added} new rows.")
 
         # Check for Next button
         try:
