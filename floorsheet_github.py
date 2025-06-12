@@ -24,7 +24,7 @@ options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
 options.add_argument("window-size=1920,1080")
 options.add_argument("--remote-debugging-port=9222")
-options.add_argument("--log-level=3")  # Less logging
+options.add_argument("--log-level=3")  # Suppress driver logs
 options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36")
 prefs = {"profile.managed_default_content_settings.images": 2}
 options.add_experimental_option("prefs", prefs)
@@ -38,7 +38,7 @@ start_time = time.time()
 url = "https://nepalstock.com.np/floor-sheet"
 driver.get(url)
 
-# Wait and set limit to 500
+# Set rows per page to 500
 WebDriverWait(driver, 15).until(
     EC.element_to_be_clickable((By.XPATH, "//select/option[@value='500']"))
 ).click()
@@ -72,8 +72,8 @@ while True:
             driver.save_screenshot("debug_no_rows.png")
             break
 
-        first_row_text = rows[0].text.strip()
         new_rows_added = 0
+        filtered_rows = []
 
         for row in rows:
             cols = row.find_all("td")
@@ -82,6 +82,7 @@ while True:
                 if contract_no in seen_contracts:
                     continue
                 seen_contracts.add(contract_no)
+                filtered_rows.append(row)
 
                 data = {
                     "Contract No.": contract_no,
@@ -94,6 +95,12 @@ while True:
                 }
                 all_data.append(data)
                 new_rows_added += 1
+
+        # Only store first row after filtering duplicates
+        if filtered_rows:
+            first_row_text = filtered_rows[0].text.strip()
+        else:
+            first_row_text = ""
 
         print(f"Added {new_rows_added} new rows.")
         print(f"Page {page_no} took {round(time.time() - loop_start, 2)} seconds.")
@@ -113,7 +120,7 @@ while True:
             WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.TAG_NAME, "a")))
             next_link.click()
 
-            # Wait until first row is different
+            # Wait for new page (first row must change)
             WebDriverWait(driver, 20).until(
                 lambda d: BeautifulSoup(d.page_source, "html.parser").select(".table-responsive tbody tr")[0].text.strip() != first_row_text
             )
@@ -136,15 +143,18 @@ driver.quit()
 end_time = time.time()
 print(f"Total runtime: {round(end_time - start_time, 2)} seconds")
 
-# Process data
+# Convert to DataFrame
 df = pd.DataFrame(all_data)
+
+# Format date
 date = str(df['Contract No.'].iloc[-1])[:8]
 date_format = pd.to_datetime(date, format='%Y%m%d').strftime('%Y-%m-%d')
 df["Date"] = date_format
 df["Contract No."] = "'" + df["Contract No."].astype(str)
+
 print(f"Scraped {len(df)} unique rows.")
 
-# Compare with total turnover
+# Check with total turnover
 total_traded_turnover = total_traded_shares.total_turnover()
 
 if total_traded_turnover != df["Amount (Rs)"].sum():
