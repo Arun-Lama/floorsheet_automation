@@ -19,11 +19,17 @@ options.add_argument("--no-sandbox")  # Bypass OS security model
 options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
 options.add_argument("window-size=1920,1080")  # Set the window size for consistency
 
+options.add_argument(
+    "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+)
+
 # Disable images
 prefs = {"profile.managed_default_content_settings.images": 2}
 options.add_experimental_option("prefs", prefs)
-
+time.sleep(2)
 driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+# driver = webdriver.Chrome(service=Service(ChromeDriverManager(driver_version="137.0.7151.40").install()), options=options)
+
 
 # Track time
 start_time = time.time()
@@ -31,7 +37,9 @@ start_time = time.time()
 # Visit target URL
 url = "https://nepalstock.com.np/floor-sheet"
 driver.get(url)
-time.sleep(1)
+time.sleep(5)
+driver.save_screenshot("headless_debug5.png")
+
 # Set limit to 500
 WebDriverWait(driver, 15).until(
     EC.element_to_be_clickable((By.XPATH, "/html/body/app-root/div/main/div/app-floor-sheet/div/div[3]/div/div[5]/div/select/option[6]"))
@@ -46,6 +54,7 @@ time.sleep(0.5)
 WebDriverWait(driver, 15).until(
     EC.presence_of_element_located((By.CSS_SELECTOR, ".table-responsive tbody tr"))
 )
+# driver.save_screenshot("headless_debug5.png")
 
 # Start scraping
 all_data = []
@@ -105,7 +114,7 @@ while True:
             next_link = next_btn.find_element(By.TAG_NAME, "a")
             WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.TAG_NAME, "a")))
             next_link.click()
-            time.sleep(0.5)
+            time.sleep(1)
             # Wait for the new page's first row to be different
             WebDriverWait(driver, 20).until(
                 lambda d: BeautifulSoup(d.page_source, "html.parser").select(".table-responsive tbody tr")[0].text.strip() != first_row_text
