@@ -5,8 +5,8 @@ import os
 import base64
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
-from dotenv import load_dotenv
-load_dotenv()
+# from dotenv import load_dotenv
+# load_dotenv()
 
 def get_credentials():
     """Decode the base64 key from env variable and return Credentials object."""
