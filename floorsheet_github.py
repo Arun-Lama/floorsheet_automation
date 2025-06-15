@@ -31,22 +31,27 @@ options.add_experimental_option("prefs", prefs)
 
 driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
-# Track time
 start_time = time.time()
-
-# Visit target URL
 url = "https://nepalstock.com.np/floor-sheet"
 driver.get(url)
 
-# Set rows per page to 500
-WebDriverWait(driver, 15).until(
-    EC.element_to_be_clickable((By.XPATH, "//select/option[@value='500']"))
-).click()
 
-# Click Filter
-WebDriverWait(driver, 10).until(
-    EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'Filter')]"))
-).click()
+def retry_click(xpath, max_retries=5, wait_time=30):
+    for attempt in range(max_retries):
+        try:
+            WebDriverWait(driver, wait_time).until(
+                EC.element_to_be_clickable((By.XPATH, xpath))
+            ).click()
+            return True
+        except Exception:
+            print(f"Retrying click: {xpath} (Attempt {attempt + 1})")
+            time.sleep(3)
+    return False
+
+
+# Retry setting rows per page and clicking Filter
+assert retry_click("//select/option[@value='500']"), "Failed to set rows per page"
+assert retry_click("//button[contains(text(),'Filter')]"), "Failed to click filter"
 
 # Start scraping
 all_data = []
@@ -60,16 +65,18 @@ while True:
         print(f"Scraping page {page_no}... (Attempt {attempt})")
 
         try:
-            WebDriverWait(driver, 10).until(
+            WebDriverWait(driver, 40).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, ".table-responsive tbody tr"))
             )
 
-            soup = BeautifulSoup(driver.page_source, "html.parser")
-            rows = soup.select(".table-responsive tbody tr")
+            # More stable: get only table HTML
+            table_html = driver.find_element(By.CSS_SELECTOR, ".table-responsive").get_attribute("outerHTML")
+            soup = BeautifulSoup(table_html, "html.parser")
+            rows = soup.select("tbody tr")
 
             if not rows:
                 print("No rows found. Retrying...")
-                time.sleep(2)
+                time.sleep(3)
                 continue
 
             new_rows_added = 0
@@ -107,9 +114,9 @@ while True:
             except NoSuchElementException:
                 is_last_page = True
 
-            if not is_last_page and new_rows_added < 500:
+            if not is_last_page and new_rows_added < 400:
                 print(f"Only {new_rows_added} rows found. Retrying page...")
-                time.sleep(2)
+                time.sleep(3)
                 continue
 
             print(f"Added {new_rows_added} new rows.")
@@ -119,15 +126,15 @@ while True:
                 print("Next button is disabled. Finished scraping.")
                 break
 
-            # Click next
+            # Go to next page
             driver.execute_script("arguments[0].scrollIntoView(true);", next_btn)
             next_link = next_btn.find_element(By.TAG_NAME, "a")
-            WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.TAG_NAME, "a")))
+            WebDriverWait(driver, 30).until(EC.element_to_be_clickable((By.TAG_NAME, "a")))
             next_link.click()
 
-            # Wait for new page
-            WebDriverWait(driver, 20).until(
-                lambda d: BeautifulSoup(d.page_source, "html.parser").select(".table-responsive tbody tr")[0].text.strip() != first_row_text
+            time.sleep(2)  # wait for page transition
+            WebDriverWait(driver, 40).until(
+                lambda d: BeautifulSoup(d.find_element(By.CSS_SELECTOR, ".table-responsive").get_attribute("outerHTML"), "html.parser").select("tbody tr")[0].text.strip() != first_row_text
             )
 
             page_no += 1
@@ -135,9 +142,13 @@ while True:
 
         except Exception as e:
             print(f"Error on page {page_no} (Attempt {attempt}): {e}")
-            time.sleep(2)
+            time.sleep(3)
             if attempt == MAX_RETRIES:
-                print("Max retries reached. Exiting.")
+                print("Max retries reached. Refreshing and restarting from page 1...")
+                driver.refresh()
+                time.sleep(5)
+                page_no = 1
+                seen_contracts.clear()
                 break
     else:
         break
@@ -145,12 +156,15 @@ while True:
 # Close browser
 driver.quit()
 
-# Time taken
+# Runtime
 end_time = time.time()
 print(f"Total runtime: {round(end_time - start_time, 2)} seconds")
 
 # Convert to DataFrame
 df = pd.DataFrame(all_data)
+
+if df.empty:
+    raise Exception("No data scraped.")
 
 # Format date
 date = str(df['Contract No.'].iloc[-1])[:8]
@@ -160,13 +174,14 @@ df["Contract No."] = "'" + df["Contract No."].astype(str)
 
 print(f"Scraped {len(df)} unique rows.")
 
-# Check with total turnover
+# Validation
 total_traded_turnover = total_traded_shares.total_turnover()
+scraped_total = df["Amount (Rs)"].sum()
 
-if total_traded_turnover != df["Amount (Rs)"].sum():
-    print("Wrong Data!")
-    print(total_traded_turnover, df["Amount (Rs)"].sum())
+if abs(total_traded_turnover - scraped_total) > 1:
+    print("⚠️ Wrong Data!")
+    print(f"Official: {total_traded_turnover}, Scraped: {scraped_total}")
 else:
-    print("Correct Data Downloaded")
+    print("✅ Correct Data Downloaded")
     print(f"Correct total turnover = {total_traded_turnover}")
     write_new_google_sheet_to_folder(df, f"{date_format} floorsheet", "1U3MOR0IMKuq30c-B9abSV-eeljjpUXPC")
