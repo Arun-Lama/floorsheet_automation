@@ -5,23 +5,22 @@ import os
 import base64
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
-# from dotenv import load_dotenv
-# load_dotenv()
+from dotenv import load_dotenv
+load_dotenv()
 
 def get_credentials():
-    """Decode the base64 key from env variable and return Credentials object."""
+    """Decode base64 key from env variable and return Credentials object without writing to disk."""
     key_base64 = os.environ["GCP_SA_KEY_BASE64"]
     key_json = base64.b64decode(key_base64).decode("utf-8")
-    
-    temp_key_path = "temp_gcp_key.json"
-    with open(temp_key_path, "w") as f:
-        f.write(key_json)
+
+    import json
+    key_dict = json.loads(key_json)
 
     scopes = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
-    creds = Credentials.from_service_account_file(temp_key_path, scopes=scopes)
+    creds = Credentials.from_service_account_info(key_dict, scopes=scopes)
     return creds
 
 
