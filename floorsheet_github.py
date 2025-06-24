@@ -125,7 +125,7 @@ while True:
             next_link = next_btn.find_element(By.TAG_NAME, "a")
             WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.TAG_NAME, "a")))
             next_link.click()
-            time.sleep(1)
+            time.sleep(2)
 
             # Wait for the new page to load (detect change in first row)
             WebDriverWait(driver, 20).until(
@@ -157,9 +157,9 @@ print(f"Scraped {len(df)} unique rows.")
 total_traded_turnover= total_traded_shares.total_turnover()
 
 
-if total_traded_turnover != df["Amount (Rs)"].sum():
+if round(total_traded_turnover) != round(df["Amount (Rs)"].sum()):
     print("Wrong Data!")
-    print(total_traded_turnover,  df["Amount (Rs)"].sum())
+    print(round(total_traded_turnover), round(df["Amount (Rs)"].sum()))
 else: 
     print('Correct Data Downloaded')
     print(f'Correct total turnover = {total_traded_turnover}')
